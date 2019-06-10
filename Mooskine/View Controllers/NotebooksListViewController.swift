@@ -12,18 +12,33 @@ import CoreData
 class NotebooksListViewController: UIViewController, UITableViewDataSource {
     /// A table view that displays a list of notebooks
     @IBOutlet weak var tableView: UITableView!
-
-    /// The `Notebook` objects being presented
-    var notebooks: [Notebook] = []
     
-    var dataController:DataController! 
+    var dataController:DataController!
+    
+    //create a fetched results controller to sit between the model and view -> communicate changes in the model to update the view.
+    var fetchedResultsController:NSFetchedResultsController<Notebook>!
 
+    fileprivate func setUpFetchedResultsController() {
+        //create fetch request to fetch data we want from the persistence store
+        let fetchRequest:NSFetchRequest<Notebook> = Notebook.fetchRequest()
+        //sort the data by creationDate in descending order.
+        let sortDescriptor = NSSortDescriptor(key:"creationDate", ascending: false)
+        fetchRequest.sortDescriptors = [sortDescriptor]
+        fetchedResultsController = NSFetchedResultsController(fetchRequest: fetchRequest, managedObjectContext: dataController.viewContext, sectionNameKeyPath: nil, cacheName: nil)
+        fetchedResultsController.delegate = self
+        do {
+            try fetchedResultsController.performFetch()
+        } catch {
+            fatalError("The fetch could not be performed: \(error.localizedDescription)")
+        }
+    }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         navigationItem.titleView = UIImageView(image: #imageLiteral(resourceName: "toolbar-cow"))
         navigationItem.rightBarButtonItem = editButtonItem
         
-        reloadNotebooks()
+        setUpFetchedResultsController()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -33,6 +48,12 @@ class NotebooksListViewController: UIViewController, UITableViewDataSource {
             tableView.deselectRow(at: indexPath, animated: false)
             tableView.reloadRows(at: [indexPath], with: .fade)
         }
+    }
+    
+    //tear down the fetched results controller when the view disappears.
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        fetchedResultsController = nil
     }
 
     // -------------------------------------------------------------------------
@@ -78,56 +99,31 @@ class NotebooksListViewController: UIViewController, UITableViewDataSource {
 
     /// Adds a new notebook to the end of the `notebooks` array
     func addNotebook(name: String) {
-        //These are how to instantiate a notebook with a non-CoreData approach.
-        //        let notebook = Notebook(name: name)
-        //        notebooks.append(notebook)
-       //         tableView.insertRows(at: [IndexPath(row: numberOfNotebooks - 1, section: 0)], with: .fade)
-        
         //Below is the Core Data approach:
         //instantiate a notebook associated with the dataControler's context.
         let notebook = Notebook(context: dataController.viewContext)
         notebook.name = name
         notebook.creationDate = Date() //set as now.
         try? dataController.viewContext.save()  //save the new notebook into the data controller.
-        
-        reloadNotebooks()
+
     }
-    
-    fileprivate func reloadNotebooks() {
-        //create fetch request to fetch data we want from the persistence store
-        let fetchRequest:NSFetchRequest<Notebook> = Notebook.fetchRequest()
-        //sort the data by creationDate in descending order.
-        let sortDescriptor = NSSortDescriptor(key:"creationDate", ascending: false)
-        fetchRequest.sortDescriptors = [sortDescriptor]
-        
-        //use if let to make sure only if the fetch was successful, then we store the result to the notebooks array.
-        if let result = try? dataController.viewContext.fetch(fetchRequest){
-            notebooks = result
-            tableView.reloadData()
-        }
-        updateEditButtonState()
-    }
-    
+
     
     
     /// Deletes the notebook at the specified index path
     func deleteNotebook(at indexPath: IndexPath) {
         //add the three lines below to execute the deletion from the persistent store as well.
-        let notebookToDelete = notebook(at: indexPath)
+        let notebookToDelete = fetchedResultsController.object(at: indexPath)
         dataController.viewContext.delete(notebookToDelete) //delete the selected notebook from persistent store
         try? dataController.viewContext.save() //save the change to persistent store
-        
-        //the code below is the same whether it's core data or not.
-        notebooks.remove(at: indexPath.row)
-        tableView.deleteRows(at: [indexPath], with: .fade)
-        if numberOfNotebooks == 0 {
-            setEditing(false, animated: true)
-        }
-        updateEditButtonState()
     }
 
     func updateEditButtonState() {
-        navigationItem.rightBarButtonItem?.isEnabled = numberOfNotebooks > 0
+        
+        if let sections = fetchedResultsController.sections{
+           navigationItem.rightBarButtonItem?.isEnabled = sections[0].numberOfObjects > 0
+        }
+        
     }
 
     override func setEditing(_ editing: Bool, animated: Bool) {
@@ -139,15 +135,18 @@ class NotebooksListViewController: UIViewController, UITableViewDataSource {
     // MARK: - Table view data source
 
     func numberOfSections(in tableView: UITableView) -> Int {
-        return 1
+        //udpate to use the frC section counts
+        return fetchedResultsController.sections?.count ?? 1
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return numberOfNotebooks
+        //udpate to use the frC row counts
+        return fetchedResultsController.sections?[section].numberOfObjects ?? 0
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let aNotebook = notebook(at: indexPath)
+        //udpate to use the frC object
+        let aNotebook = fetchedResultsController.object(at: indexPath)
         let cell = tableView.dequeueReusableCell(withIdentifier: NotebookCell.defaultReuseIdentifier, for: indexPath) as! NotebookCell
 
         // Configure cell
@@ -167,14 +166,6 @@ class NotebooksListViewController: UIViewController, UITableViewDataSource {
         }
     }
 
-    // Helper
-
-    var numberOfNotebooks: Int { return notebooks.count }
-
-    func notebook(at indexPath: IndexPath) -> Notebook {
-        return notebooks[indexPath.row]
-    }
-
     // -------------------------------------------------------------------------
     // MARK: - Navigation
 
@@ -182,9 +173,34 @@ class NotebooksListViewController: UIViewController, UITableViewDataSource {
         // If this is a NotesListViewController, we'll configure its `Notebook`
         if let vc = segue.destination as? NotesListViewController {
             if let indexPath = tableView.indexPathForSelectedRow {
-                vc.notebook = notebook(at: indexPath)
+                vc.notebook = fetchedResultsController.object(at: indexPath)
                 vc.dataController = dataController
             }
+        }
+    }
+}
+
+
+
+//add this extension to create an automatically updated table view that will respond to inserts and deletes. (Without this extension, the core data is persistent, but the new notes you added can't be reflected on the table view.
+extension NotebooksListViewController:NSFetchedResultsControllerDelegate {
+    
+    func controllerWillChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+        tableView.beginUpdates()
+    }
+    
+    func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+        tableView.endUpdates()
+    }
+    
+    func controller(_ controller: NSFetchedResultsController<NSFetchRequestResult>, didChange anObject: Any, at indexPath: IndexPath?, for type: NSFetchedResultsChangeType, newIndexPath: IndexPath?) {
+        switch type {
+        case .insert:
+            tableView.insertRows(at: [newIndexPath!], with: .fade)
+        case .delete:
+            tableView.deleteRows(at: [indexPath!], with: .fade)
+        default:
+            break
         }
     }
 }
