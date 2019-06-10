@@ -23,18 +23,7 @@ class NotebooksListViewController: UIViewController, UITableViewDataSource {
         navigationItem.titleView = UIImageView(image: #imageLiteral(resourceName: "toolbar-cow"))
         navigationItem.rightBarButtonItem = editButtonItem
         
-        //create fetch request to fetch data we want from the persistence store
-        let fetchRequest:NSFetchRequest<Notebook> = Notebook.fetchRequest()
-        //sort the data by creationDate in descending order.
-        let sortDescriptor = NSSortDescriptor(key:"creationDate", ascending: false)
-        fetchRequest.sortDescriptors = [sortDescriptor]
-        
-        //use if let to make sure only if the fetch was successful, then we store the result to the notebooks array.
-        if let result = try? dataController.viewContext.fetch(fetchRequest){
-            notebooks = result
-            tableView.reloadData()
-        }
-        updateEditButtonState()
+        reloadNotebooks()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -100,11 +89,27 @@ class NotebooksListViewController: UIViewController, UITableViewDataSource {
         notebook.name = name
         notebook.creationDate = Date() //set as now.
         try? dataController.viewContext.save()  //save the new notebook into the data controller.
-        notebooks.insert(notebook, at: 0)  //insert at position 0, instead of append.
-        tableView.insertRows(at: [IndexPath(row:0, section: 0)], with: .fade) //display this in a new row
+        
+        reloadNotebooks()
+    }
+    
+    fileprivate func reloadNotebooks() {
+        //create fetch request to fetch data we want from the persistence store
+        let fetchRequest:NSFetchRequest<Notebook> = Notebook.fetchRequest()
+        //sort the data by creationDate in descending order.
+        let sortDescriptor = NSSortDescriptor(key:"creationDate", ascending: false)
+        fetchRequest.sortDescriptors = [sortDescriptor]
+        
+        //use if let to make sure only if the fetch was successful, then we store the result to the notebooks array.
+        if let result = try? dataController.viewContext.fetch(fetchRequest){
+            notebooks = result
+            tableView.reloadData()
+        }
         updateEditButtonState()
     }
-
+    
+    
+    
     /// Deletes the notebook at the specified index path
     func deleteNotebook(at indexPath: IndexPath) {
         //add the three lines below to execute the deletion from the persistent store as well.
