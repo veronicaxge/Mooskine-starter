@@ -24,7 +24,7 @@ class NotebooksListViewController: UIViewController, UITableViewDataSource {
         //sort the data by creationDate in descending order.
         let sortDescriptor = NSSortDescriptor(key:"creationDate", ascending: false)
         fetchRequest.sortDescriptors = [sortDescriptor]
-        fetchedResultsController = NSFetchedResultsController(fetchRequest: fetchRequest, managedObjectContext: dataController.viewContext, sectionNameKeyPath: nil, cacheName: nil)
+        fetchedResultsController = NSFetchedResultsController(fetchRequest: fetchRequest, managedObjectContext: dataController.viewContext, sectionNameKeyPath: nil, cacheName: "notebooks") //each frC should has its own cache with differeent names. Caching help large datasets to load faster.
         fetchedResultsController.delegate = self
         do {
             try fetchedResultsController.performFetch()
@@ -183,6 +183,7 @@ class NotebooksListViewController: UIViewController, UITableViewDataSource {
 
 
 //add this extension to create an automatically updated table view that will respond to inserts and deletes. (Without this extension, the core data is persistent, but the new notes you added can't be reflected on the table view.
+//benefit: this extension decouples the view logic from the model layer code. That way if you want to make changes to the model layer, don't need to worry about how the user interface is updated.
 extension NotebooksListViewController:NSFetchedResultsControllerDelegate {
     
     func controllerWillChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
@@ -199,6 +200,10 @@ extension NotebooksListViewController:NSFetchedResultsControllerDelegate {
             tableView.insertRows(at: [newIndexPath!], with: .fade)
         case .delete:
             tableView.deleteRows(at: [indexPath!], with: .fade)
+        case .update:
+            tableView.reloadRows(at: [indexPath!], with: .fade)
+        case .move:
+            tableView.moveRow(at: indexPath!, to: newIndexPath!)
         default:
             break
         }
