@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import CoreData
 
 class NoteDetailsViewController: UIViewController {
     /// A text view that displays a note's text
@@ -144,17 +145,31 @@ extension NoteDetailsViewController {
     }
     
     @IBAction func cowTapped(sender: Any) {
-        let newText = textView.attributedText.mutableCopy() as! NSMutableAttributedString
+        let backgroundContext: NSManagedObjectContext! = dataController.backgroundContext
         
+        //anything on the UI (i.e.textView)  should be on the mainthread so cannot be in the background.
+        let newText = textView.attributedText.mutableCopy() as! NSMutableAttributedString
         let selectedRange = textView.selectedRange
         let selectedText = textView.attributedText.attributedSubstring(from: selectedRange)
-        let cowText = Pathifier.makeMutableAttributedString(for: selectedText, withFont: UIFont(name: "AvenirNext-Heavy", size: 56)!, withPatternImage: #imageLiteral(resourceName: "texture-cow"))
-        newText.replaceCharacters(in: selectedRange, with: cowText)
         
-        textView.attributedText = newText
-        textView.selectedRange = NSMakeRange(selectedRange.location, 1)
-        note.attributedText = textView.attributedText
-        try? dataController.viewContext.save()
+        //every managed object has a unique object ID that will help you search for it.
+        let noteID = note.objectID
+        
+        backgroundContext.perform {
+            let backgroundNote = backgroundContext.object(with: noteID) as! Note
+            
+            let cowText = Pathifier.makeMutableAttributedString(for: selectedText, withFont: UIFont(name: "AvenirNext-Heavy", size: 56)!, withPatternImage: #imageLiteral(resourceName: "texture-cow"))
+            newText.replaceCharacters(in: selectedRange, with: cowText)
+            
+            //saving the change to the backgorund context
+            backgroundNote.attributedText = newText
+            try? backgroundContext.save()
+        }
+        
+//        textView.attributedText = newText
+//        textView.selectedRange = NSMakeRange(selectedRange.location, 1)
+       // note.attributedText = textView.attributedText //we want to do this in the background to make the app fast; however the textView cannot be handled in the background. We need to create a matching note instance into the background, which is the "backgroundNote" above
+        
     }
     
     // MARK: Helper methods for actions

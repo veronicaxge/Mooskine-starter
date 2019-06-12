@@ -21,8 +21,25 @@ class DataController{
     }
     //end of 3.
     
+    //add a background context for slow tasks
+    var backgroundContext:NSManagedObjectContext!
+    
     init(modelName:String){
         persistentContainer = NSPersistentContainer(name:modelName)
+    }
+    
+    func configureContexts(){
+        //instantiate backgroundContext
+        backgroundContext = persistentContainer.newBackgroundContext()
+        
+        viewContext.automaticallyMergesChangesFromParent = true
+        backgroundContext.automaticallyMergesChangesFromParent = true
+        
+        //if there's a conflict between background context and the store when merging, data on the background context will trump data on the store.
+        backgroundContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+        
+        //if there's a conflict between view context and the store when merging, data on the store will trump data on the view context.
+        viewContext.mergePolicy = NSMergePolicy.mergeByPropertyStoreTrump
     }
     
     //2.use the persistent container to load the persistent store
@@ -34,6 +51,8 @@ class DataController{
             }
             //after loading the store, perform the autosave, and also call the completion handler.
             self.autoSaveViewContext()
+            
+            self.configureContexts()
             completion?()
         }
     }
